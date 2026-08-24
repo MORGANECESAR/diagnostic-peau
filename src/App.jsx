@@ -486,13 +486,6 @@ ${a.objectifs ? `<p class="label" style="margin-top:20px;">Attentes exprimées</
 </body></html>`;
   }
 
-  function handleEmail() {
-    const subject = encodeURIComponent("Votre diagnostic de peau — Institut Morgane César");
-    const body = encodeURIComponent(buildSummaryText());
-    const to = encodeURIComponent(a.email || "");
-    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
-  }
-
   function handleDownload() {
     const html = buildSummaryHTML();
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
@@ -505,6 +498,30 @@ ${a.objectifs ? `<p class="label" style="margin-top:20px;">Attentes exprimées</
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  }
+
+  // Le corps du mailto doit rester court : un texte trop long (avec tout le détail
+  // du diagnostic) fait échouer silencieusement l'ouverture du client mail sur
+  // certains systèmes, sans aucun message d'erreur. On télécharge donc la fiche
+  // complète en HTML au même moment, à joindre manuellement au message.
+  // mailto: dépend de l'application mail par défaut du système, qui s'avère peu fiable
+  // (aucune configurée, mal configurée, bugs d'appli...). On ouvre directement Gmail
+  // dans le navigateur à la place : ça marche sur tout appareil, sans réglage système.
+  function handleEmail() {
+    handleDownload();
+    const subject = encodeURIComponent("Mon diagnostic de peau — Institut Morgane César");
+    const shortBody = [
+      `Bonjour${a.prenom ? " " + a.prenom : ""},`,
+      "",
+      "Voici mon diagnostic de peau réalisé sur l'outil de l'institut.",
+      "La fiche complète vient d'être téléchargée sur cet appareil : merci de la joindre à cet email avant de l'envoyer.",
+      "",
+      recommendedSoins.length ? `Soin recommandé : ${recommendedSoins.map((s) => s.name).join(" / ")}` : "",
+    ].filter(Boolean).join("\n");
+    const body = encodeURIComponent(shortBody);
+    const to = encodeURIComponent(a.email || "");
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${subject}&body=${body}`;
+    window.open(gmailUrl, "_blank");
   }
 
 
@@ -1014,7 +1031,7 @@ ${a.objectifs ? `<p class="label" style="margin-top:20px;">Attentes exprimées</
                 className="w-full px-5 py-3 rounded-md text-white text-sm mb-3"
                 style={{ backgroundColor: C.green }}
               >
-                {a.email ? `Envoyer par email à ${a.email}` : "Envoyer par email"}
+                {a.email ? `Envoyer par Gmail à ${a.email}` : "Envoyer par Gmail"}
               </button>
 
               <div className="flex flex-col sm:flex-row gap-3 print:hidden">
@@ -1043,7 +1060,7 @@ ${a.objectifs ? `<p class="label" style="margin-top:20px;">Attentes exprimées</
                 </button>
               </div>
               <p className="text-xs mt-3 print:hidden" style={{ color: "#A69C82" }}>
-                « Envoyer par email » ouvre votre application mail avec le message déjà rédigé — il ne reste qu'à appuyer sur envoyer. Si aucune de ces options ne s'ouvre correctement, utilisez « Copier la synthèse » qui fonctionne dans la plupart des cas.
+                « Envoyer par Gmail » télécharge la fiche complète puis ouvre un brouillon Gmail avec un message court — il suffit de joindre le fichier téléchargé avant d'envoyer. Si vous n'utilisez pas Gmail, utilisez « Copier la synthèse » qui fonctionne avec n'importe quelle messagerie.
               </p>
             </div>
           )}
