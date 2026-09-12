@@ -121,6 +121,62 @@ function computeRecommendedSoins(selectedConcernIds, selectedSkinTypeIds = []) {
   return [top[0].soin];
 }
 
+/* ---------------------------------------------------------------
+   Les soins peeling (glycolique et Bio-Peel) ne remplacent jamais le
+   soin recommandé au-dessus : ils viennent en complément. Le bloc ne
+   s'affiche que si les préoccupations cochées relèvent vraiment d'un
+   peeling superficiel, d'où une liste volontairement courte.
+   --------------------------------------------------------------- */
+
+// Indications reconnues du peeling superficiel aux acides de fruits.
+// "cicatrices" couvre les marques post-acné, là où le peeling est bon,
+// sans rien promettre sur une acné en poussée.
+const PEEL_CONCERNS = ["taches", "pores", "rides", "cicatrices", "terne"];
+
+// Terrain fragile : on n'oriente alors que vers le Bio-Peel, plus doux.
+const PEEL_DOUX_CONCERNS = ["rougeurs", "barriere"];
+
+// Contre-indications franches : aucun peeling n'est proposé.
+const PEEL_STOP = ["grossesse", "isotretinoine", "peeling", "lesion", "herpes", "photosensibilisant", "cancer_peau"];
+
+// Cas qui se jugent de visu : le bloc invite à en parler en cabine sans
+// nommer de peeling. Le mélasma en fait partie — un AHA trop appuyé
+// peut relancer la pigmentation.
+const PEEL_AVIS = ["traitement", "rosacee", "dermatite"];
+
+function computePeel(concernIds = [], skinTypeIds = [], antecedentIds = []) {
+  if (!concernIds.some((c) => PEEL_CONCERNS.includes(c))) return "none";
+  if (antecedentIds.some((x) => PEEL_STOP.includes(x))) return "none";
+  if (antecedentIds.some((x) => PEEL_AVIS.includes(x))) return "avis";
+  if (concernIds.includes("melasma")) return "avis";
+  if (skinTypeIds.includes("sensible")) return "bio";
+  if (concernIds.some((c) => PEEL_DOUX_CONCERNS.includes(c))) return "bio";
+  return "glyco";
+}
+
+const PEEL_TEXTS = {
+  glyco: {
+    titre: "Pour aller plus loin : le peeling",
+    corps:
+      "Ce que vous avez coché répond bien à un peeling à l'acide glycolique (1 h 15). Il affine le grain de peau, estompe les taches et lisse les ridules. Il ne remplace pas le soin recommandé au-dessus : il vient en complément, seul ou en cure de trois séances pour un résultat qui s'installe.",
+    note:
+      "À faire d'octobre à mars, jamais en période d'ensoleillement, avec une protection solaire quotidienne pendant les quinze jours qui suivent.",
+  },
+  bio: {
+    titre: "Pour aller plus loin : le peeling",
+    corps:
+      "Ce que vous avez coché répond bien à un peeling, mais votre peau est sensible ou sa barrière est fragilisée. C'est alors le Soin Bio-Peel (1 h 15) qui convient : le même travail sur le grain et les taches, en version bio et beaucoup plus douce. Là aussi, il vient en complément du soin recommandé, pas à sa place.",
+    note:
+      "À faire d'octobre à mars, avec une protection solaire quotidienne les jours qui suivent.",
+  },
+  avis: {
+    titre: "Un peeling, peut-être : à voir ensemble",
+    corps:
+      "Ce que vous avez coché pourrait relever d'un peeling. Mais dans votre cas, cela ne se décide pas par questionnaire : il y a des éléments à regarder de visu avant de se lancer. Parlons-en en cabine, nous verrons ensemble ce qui est possible et ce qui ne l'est pas.",
+    note: "",
+  },
+};
+
 const CONCERNS = [
   { id: "hydratation", label: "Déshydratation, tiraillements", actifs: ["Acide hyaluronique", "Glycérine", "Céramides", "Panthénol"],
     produits: { coreen: "Anua Heartleaf 77% Soothing Toner", parapharmacie: "La Roche-Posay Hyalu B5 Sérum", bio: "Aroma-Zone Sérum Acide Hyaluronique 3,5%", budget: "CeraVe Sérum Hydratant Acide Hyaluronique", institut: "Genosys MHS – Moisture Replenishing Hyaluron Serum", institutBio: "Bio by Oxalia Crème Doudou Cocoon (soin ultra-hydratant)" } },
@@ -325,6 +381,8 @@ export default function SkinDiagnostic() {
 
   const recommendedSoins = computeRecommendedSoins(a.concerns, a.skinTypes || []);
   const showBienEtre = a.stress === "Élevé" || a.sommeil === "Moins de 6h";
+  const peel = computePeel(a.concerns, a.skinTypes || [], a.antecedents || []);
+  const peelText = peel === "none" ? null : PEEL_TEXTS[peel];
 
   const lifestyleFlags = [];
   if (!a.routineEtapes.includes("Soin solaire (SPF)")) {
@@ -404,6 +462,12 @@ export default function SkinDiagnostic() {
       lines.push("Le stress et le manque de sommeil ont un effet réel sur la peau : un accompagnement bien-être est aussi proposé à l'institut.");
       lines.push("");
     }
+    if (peelText) {
+      lines.push(peelText.titre.toUpperCase());
+      lines.push(peelText.corps);
+      if (peelText.note) lines.push(peelText.note);
+      lines.push("");
+    }
     if (activeAntecedents.length || a.allergiesDetail || lifestyleFlags.length) {
       lines.push("POINTS DE VIGILANCE");
       activeAntecedents.forEach((x) => lines.push(`- ${x.label} : ${x.warn}`));
@@ -464,6 +528,13 @@ export default function SkinDiagnostic() {
         Le stress et le manque de sommeil ont un effet réel sur la peau. Un accompagnement bien-être est aussi proposé à l'institut.
       </div>` : "";
 
+    const peelHTML = peelText ? `
+      <div style="background:#FBF6EC;border:1px solid #C9A96A;border-radius:10px;padding:16px 18px;margin-bottom:20px;">
+        <p style="text-transform:uppercase;font-size:12px;letter-spacing:0.08em;font-weight:600;color:#A8791F;margin:0 0 8px;">${esc(peelText.titre)}</p>
+        <p style="margin:0;font-size:14px;color:#54524C;">${esc(peelText.corps)}</p>
+        ${peelText.note ? `<p style="margin:8px 0 0;font-size:13px;font-style:italic;color:#A69C82;">${esc(peelText.note)}</p>` : ""}
+      </div>` : "";
+
     const otherSoinsHTML = `
       <div style="background:white;border:1px solid #EFE6D2;border-radius:10px;padding:14px 16px;margin-bottom:20px;font-size:13px;color:#54524C;">
         <p style="text-transform:uppercase;font-size:12px;letter-spacing:0.08em;font-weight:600;color:#B8894A;margin:0 0 8px;">Autres formats disponibles</p>
@@ -506,6 +577,7 @@ ${(a.routineEtapes.length || a.marquesActuelles) ? `
 </div>` : ""}
 ${selectedConcerns.length ? `<p class="label">Préoccupations, actifs & protocole produits</p>${concernsHTML}` : ""}
 ${soinHTML}
+${peelHTML}
 ${bienEtreHTML}
 ${otherSoinsHTML}
 ${warnHTML}
@@ -1102,6 +1174,16 @@ ${a.objectifs ? `<p class="label" style="margin-top:20px;">Attentes exprimées</
                   >
                     Prendre rendez-vous · 06 81 70 98 18
                   </a>
+                </div>
+              )}
+
+              {peelText && (
+                <div className="rounded-lg p-4 mb-5" style={{ backgroundColor: C.ivory, border: `1px solid ${C.gold}` }}>
+                  <p className="text-xs uppercase tracking-wide font-semibold mb-2" style={{ color: C.goldDeep }}>{peelText.titre}</p>
+                  <p className="text-sm" style={{ color: "#54524C" }}>{peelText.corps}</p>
+                  {peelText.note && (
+                    <p className="text-xs italic mt-2" style={{ color: "#A69C82" }}>{peelText.note}</p>
+                  )}
                 </div>
               )}
 
